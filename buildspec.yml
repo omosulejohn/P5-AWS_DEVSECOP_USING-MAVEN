@@ -1,0 +1,50 @@
+version: 0.2
+env:
+  secrets-manager:
+      TOKEN: FirstSecret:tokenforsonars
+      SNYK_TOKEN: SNYKSecret:snykauth
+phases:
+  install:
+    runtime-versions:
+      java: latest
+  build:
+    commands:
+      # perform a Sonarqube SAST scan; 
+      - mvn verify sonar:sonar -Dsonar.projectKey=awstest_testproject -Dsonar.organization=awstest -Dsonar.host.url=https://sonarcloud.io -Dsonar.token=$TOKEN
+      - sleep 5
+
+      # Quality gates for SAST
+      - |- 
+        quality_status=$(curl -s -u $TOKEN: https://sonarcloud.io/api/qualitygates/project_status?projectKey=awstest_testproject | jq -r '.projectStatus.status')
+        echo "SonarCloud analysistatus is $quality_status"; 
+        if [ $quality_status = "ERROR" ] ; then exit 1;fi
+
+      # install the latest Snyk CLI from GitHub Releases
+      - latest_version=$(curl -Is "https://github.com/snyk/cli/releases/latest" | grep "^location" | sed 's#.*tag/##g' | tr -d "\r")
+      - snyk_cli_dl_linux="https://github.com/snyk/cli/releases/download/${latest_version}/snyk-linux"
+      - curl -Lo /usr/local/bin/snyk $snyk_cli_dl_linux
+      - chmod +x /usr/local/bin/snyk
+      
+      # authenticate the Snyk CLI
+      - snyk auth $SNYK_TOKEN
+      
+      # perform a Snyk SCA scan; continue if vulnerabilities are found
+      - snyk test || true
+      
+      # upload a snapshot of the project to Snyk for continuous monitoring
+      - snyk monitor
+      
+      # perform a OWASP ZAP DAST scan; 
+      - |-
+        apt-get update
+        apt-get -y install wget
+        apt-get -y install default-jdk
+        wget https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_Linux.tar.gz
+        tar -xvf ZAP_2.14.0_Linux.tar.gz
+        cd ZAP_2.14.0
+        ./zap.sh -cmd -quickurl https://www.example.com -quickprogress -quickout ../zap_report.html 
+        
+# Storing DAST reports in S3 buckets        
+artifacts:
+  files:
+    - zap_report.html
