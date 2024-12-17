@@ -11,12 +11,12 @@ phases:
     commands:
       # perform a Sonarqube SAST scan; 
       - mvn verify sonar:sonar -Dsonar.projectKey=awstest_testproject -Dsonar.organization=awstest -Dsonar.host.url=https://sonarcloud.io -Dsonar.token=$TOKEN
-      - sleep 5
+      - sleep 20
 
       # Quality gates for SAST
       - |- 
         quality_status=$(curl -s -u $TOKEN: https://sonarcloud.io/api/qualitygates/project_status?projectKey=awstest_testproject | jq -r '.projectStatus.status')
-        echo "SonarCloud analysistatus is $quality_status"; 
+        echo "SonarCloud analysis_status is $quality_status"; 
         if [ $quality_status = "ERROR" ] ; then exit 1;fi
 
       # install the latest Snyk CLI from GitHub Releases
